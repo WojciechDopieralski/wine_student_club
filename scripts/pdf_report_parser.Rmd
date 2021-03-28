@@ -1,0 +1,96 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r library_load}
+#care you need to change Rstudio options to 32 bit due to Java version. Best option - use docker. 
+
+library(here)
+library(tabulizer)
+library(tidyverse)
+```
+
+
+```{r}
+file_location <- here("data", "2021_srodki.pdf")
+
+raw_data_page1_df <- tabulizer::extract_tables(file_location, 
+                                       output = "data.frame",
+                                       page = c(1), 
+                                       encoding = "UTF-8")[[1]]
+
+col_names_raw <- raw_data_page1_df[1:6, ] %>% 
+  summarise_all(funs(trimws(paste(., collapse = '')))) %>%
+  unlist()
+
+col_names <- c(col_names_raw[1:2], "Spr za 2020",col_names_raw[4:6])
+
+spr_clean <- raw_data_page1_df %>%
+  rename_all(~ col_names) %>%
+  tail(-6L) %>%
+  janitor::clean_names() %>%
+  replace(.=="-zł", 0) %>% 
+  na_if("") %>%
+  fill(1:6, .direction = "up") %>%
+  distinct(nazwa_skn, .keep_all = TRUE) %>%
+  distinct(l_p, .keep_all = TRUE) %>%
+  na_if("b.d.") %>%
+  na_if("brak wniosku") %>%
+  mutate(dplyr::across(c(l_p, liczba_pkt_za_2020, liczba_pkt_dofinansowania), as.integer)) %>%
+  mutate(spr_za_2020 = as.factor(spr_za_2020),
+         przyznane_srodki_na_2021 = as.numeric(str_replace_all(str_replace(trimws(str_replace(przyznane_srodki_na_2021, "zł", ""), which = "both"),",", "."), "[[:blank:]]", "")))
+
+area <- locate_areas(file_location, c(2:3))
+
+raw_data_page2_plus_df <- tabulizer::extract_tables(file_location, 
+                                       output = "data.frame",
+                                       area = area,
+                                       page = c(2,3), 
+                                       encoding = "UTF-8", 
+                                       guess = FALSE)[[1]]
+
+
+```
+
+
+```{r temp_site_2plus}
+temp_file_location <- here("data", "temporary_data_p23.csv")
+
+raw_temp_spr <- read.csv(temp_file_location)
+
+temp_spr_clean <- raw_temp_spr %>%
+  rename_all(~ col_names) %>%
+  janitor::clean_names() %>%
+  replace(.=="- zł", 0) %>%
+  na_if("b.d.") %>%
+  na_if("brak wniosku") %>%
+  mutate(dplyr::across(c(l_p, liczba_pkt_za_2020, liczba_pkt_dofinansowania), as.integer)) %>%
+  mutate(spr_za_2020 = as.factor(spr_za_2020),
+         przyznane_srodki_na_2021 = as.numeric(str_replace_all(str_replace(trimws(str_replace(przyznane_srodki_na_2021, "zł", ""), which = "both"),",", "."),"[[:blank:]]", "")))
+
+
+final_clean_df <- rbind(spr_clean, temp_spr_clean)
+```
+
+
+```{r}
+summary(final_clean_df$liczba_pkt_dofinansowania)
+
+summary(final_clean_df$przyznane_srodki_na_2021)
+
+
+t1 <- final_clean_df %>%
+  arrange(desc(przyznane_srodki_na_2021))
+
+t2 <- final_clean_df%>%
+  drop_na(liczba_pkt_dofinansowania)
+
+
+
+
+
+```
+
